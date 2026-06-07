@@ -1,122 +1,95 @@
 // controllers/authController.js
+// DESIGN PATTERN: Repository Pattern (data access via UserRepository / CompanyRepository)
+//                 Factory Pattern   (token creation via TokenFactory)
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const UserRepository = require('../repositories/UserRepository');
+const CompanyRepository = require('../repositories/CompanyRepository');
 
-// --- REGISTER A NEW USER ---
-exports.register = async(req, res) => {
-    // Grab registration properties from the Flutter request payload
+// ── FACTORY PATTERN ─────────────────────────────────────────────────────────
+// TokenFactory encapsulates the details of JWT creation.
+// To change algorithm or claims, update only this one place.
+class TokenFactory {
+    static create(payload) {
+        return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
+    }
+}
+
+// ── REGISTER ─────────────────────────────────────────────────────────────────
+exports.register = async (req, res) => {
     const { email, password, role, companyName } = req.body;
 
     if (!email || !password || !role) {
-        return res.status(400).json({ message: 'Missing required registration parameters.' });
+        return res.status(400).json({ message: 'Missing required fields.' });
     }
 
-    // Acquire a singular isolated database connection to perform a secure atomic transaction
     const connection = await pool.getConnection();
-
     try {
-        // Start database transaction pipeline
         await connection.beginTransaction();
 
-        // 1. Check if user already exists
-        const [existingUsers] = await connection.query('SELECT * FROM users WHERE email = ?', [email]);
-        if (existingUsers.length > 0) {
-            await connection.rollback(); // Cancel transaction
-            return res.status(400).json({ message: 'User already exists with this email.' });
+        if (await UserRepository.emailExists(email)) {
+            await connection.rollback();
+            return res.status(400).json({ message: 'Email already registered.' });
         }
 
-        // 2. Hash the password for security
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(password, salt);
 
-        // 3. Insert the new user into the database
-        const [result] = await connection.query(
-            'INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)', [email, passwordHash, role]
-        );
+        const newUserId = await UserRepository.create(connection, { email, passwordHash, role });
 
-        const newUserId = result.insertId;
-
-        // 4. 🚀 LIFECYCLE LINK: Automatically provision a company container if the registrant is an employer
         if (role === 'employer') {
-            // If Flutter didn't supply a companyName text field, generate a clean placeholder string
-            const finalCompanyName = companyName || `Company ${newUserId}`;
-
-            // Insert matching company metadata row linked back to our new user_id column
-            await connection.query(
-                `INSERT INTO companies (admin_user_id, company_name, reality_score, inclusivity_tier) 
-                 VALUES (?, ?, 1.00, 'None')`, [newUserId, finalCompanyName]
-            );
-
-            console.log(`🏢 [REGISTRATION LOG] Created corporate entity profile row for User ID: ${newUserId}`);
+            const finalName = companyName || `Company ${newUserId}`;
+            await CompanyRepository.create(connection, { adminUserId: newUserId, companyName: finalName });
         }
 
-        // Commit both inserts into your MySQL system permanently together
         await connection.commit();
-        console.log(`👤 [REGISTRATION SUCCESS] Secure account built for profile entity ID: ${newUserId}`);
-
         res.status(201).json({
-            message: role === 'employer' ? 'Employer and Company registered successfully!' : 'User registered successfully!',
+            message: role === 'employer' ? 'Employer registered!' : 'User registered!',
             userId: newUserId
         });
-
-    } catch (error) {
-        // Cancel everything if any internal database sequence fails
+    } catch (err) {
         await connection.rollback();
-        console.error('Registration Error:', error);
+        console.error('Register error:', err);
         res.status(500).json({ message: 'Server error during registration.' });
     } finally {
-        // Always release the connection handle back to pool management
         connection.release();
     }
 };
 
-// --- LOGIN AN EXISTING USER ---
-exports.login = async(req, res) => {
+// ── LOGIN ─────────────────────────────────────────────────────────────────────
+exports.login = async (req, res) => {
     const { email, password } = req.body;
-
     try {
-        // 1. Find the user by email
-        const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
-        if (users.length === 0) {
-            return res.status(404).json({ message: 'User not found.' });
-        }
+        const user = await UserRepository.findByEmail(email);
+        if (!user) return res.status(404).json({ message: 'User not found.' });
 
-        const user = users[0];
-
-        // 2. Compare the provided password with the hashed password in DB
         const isMatch = await bcrypt.compare(password, user.password_hash);
-        if (!isMatch) {
-            return res.status(401).json({ message: 'Invalid credentials.' });
-        }
+        if (!isMatch) return res.status(401).json({ message: 'Invalid credentials.' });
 
-        // 3. 🚀 Find their company_id if they are an employer
+        // Fetch companyId so Flutter can save it and use it when posting jobs
         let companyId = null;
         if (user.role === 'employer') {
-            const [companies] = await pool.query('SELECT company_id FROM companies WHERE admin_user_id = ?', [user.user_id]);
-            if (companies.length > 0) {
-                companyId = companies[0].company_id;
-            }
+            const company = await CompanyRepository.findByAdminUserId(user.user_id);
+            if (company) companyId = company.company_id;
         }
 
-        // 4. Generate a JWT Token
-        const token = jwt.sign({ userId: user.user_id, role: user.role },
-            process.env.JWT_SECRET, { expiresIn: '7d' }
-        );
+        // TokenFactory creates the JWT
+        const token = TokenFactory.create({ userId: user.user_id, role: user.role });
 
-res.status(200).json({
+        res.status(200).json({
             message: 'Login successful!',
-            token: token,
+            token,
             user: {
                 id: user.user_id,
-                name: user.email.split('@')[0], // Use email prefix as name
+                name: user.full_name || email.split('@')[0],
                 email: user.email,
-                role: user.role
+                role: user.role,
+                companyId  // ← Flutter saves this on login
             }
         });
-
-    } catch (error) {
-        console.error('Login Error:', error);
+    } catch (err) {
+        console.error('Login error:', err);
         res.status(500).json({ message: 'Server error during login.' });
     }
 };

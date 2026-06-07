@@ -5,160 +5,114 @@ import '../services/message_service.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
-
-  @override
-  State<ChatScreen> createState() => _ChatScreenState();
+  @override State<ChatScreen> createState() => _ChatScreenState();
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  late int _currentUserId;
- late int _otherUserId;
-  String? _otherUserName;
-  int? _jobId;
+  late int _myId, _otherId;
+  String? _otherName;
+  int?    _jobId;
   List<Map<String, dynamic>> _messages = [];
-  bool _isLoading = true;
-  final TextEditingController _msgController = TextEditingController();
+  bool _loading = true;
+  final _msgCtrl = TextEditingController();
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>?;
     if (args != null && args['otherUserId'] != null) {
-      _otherUserId = args['otherUserId'] as int;
-      _otherUserName = args['otherUserName'] as String?;
-      _jobId = args['jobId'] as int?;
-      _loadCurrentUser();
+      _otherId   = args['otherUserId']   as int;
+      _otherName = args['otherUserName'] as String?;
+      _jobId     = args['jobId']         as int?;
+      _init();
     } else {
       Future.microtask(() => Navigator.maybePop(context));
     }
   }
 
-  Future<void> _loadCurrentUser() async {
+  Future<void> _init() async {
     final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getInt('userId');
-    if (userId == null) {
-      Navigator.pop(context);
-      return;
-    }
-    setState(() {
-      _currentUserId = userId;
-    });
-    await _loadConversation();
+    final id    = prefs.getInt('userId');
+    if (id == null) { Navigator.pop(context); return; }
+    _myId = id;
+    await _load();
   }
 
-  Future<void> _loadConversation() async {
+  Future<void> _load() async {
     final msgs = await MessageService().getConversation(
-      userId: _currentUserId,
-      otherUserId: _otherUserId,
-      jobId: _jobId,
-    );
-    setState(() {
-      _messages = msgs;
-      _isLoading = false;
-    });
+        userId: _myId, otherUserId: _otherId, jobId: _jobId);
+    setState(() { _messages = msgs; _loading = false; });
   }
 
-  Future<void> _sendMessage() async {
-    final content = _msgController.text.trim();
-    if (content.isEmpty) return;
-
-    final success = await MessageService().sendMessage(
-      senderId: _currentUserId,
-      receiverId: _otherUserId,
-      content: content,
-      jobId: _jobId,
-    );
-
-    if (success) {
-      _msgController.clear();
-      await _loadConversation();
-    }
+  Future<void> _send() async {
+    final text = _msgCtrl.text.trim();
+    if (text.isEmpty) return;
+    final ok = await MessageService().sendMessage(
+        senderId: _myId, receiverId: _otherId, content: text, jobId: _jobId);
+    if (ok) { _msgCtrl.clear(); await _load(); }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_otherUserName ?? 'Chat'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadConversation,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _messages.isEmpty
-                    ? const Center(child: Text("Start the conversation!"))
-                    : ListView.builder(
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          final msg = _messages[index];
-                          final isMe = msg['sender_id'] == _currentUserId;
-                          return _messageBubble(msg, isMe);
-                        },
-                      ),
-          ),
-          const Divider(height: 1),
-          Container(
-            padding: const EdgeInsets.all(8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _msgController,
-                    decoration: const InputDecoration(
-                      hintText: "Type a message...",
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    ),
-                    onSubmitted: (_) => _sendMessage(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.send, color: Colors.blueAccent),
-                  onPressed: _sendMessage,
-                ),
-              ],
+          title: Text(_otherName ?? 'Chat'),
+          actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load)]),
+      body: Column(children: [
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _messages.isEmpty
+                  ? const Center(child: Text('Start the conversation!'))
+                  : ListView.builder(
+                      itemCount: _messages.length,
+                      itemBuilder: (ctx, i) {
+                        final m   = _messages[i];
+                        final isMe = m['sender_id'] == _myId;
+                        return _bubble(m, isMe);
+                      }),
+        ),
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.all(8),
+          child: Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _msgCtrl,
+                decoration: const InputDecoration(
+                    hintText: 'Type a message…', border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                onSubmitted: (_) => _send(),
+              ),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(width: 8),
+            IconButton(
+                icon: const Icon(Icons.send, color: Colors.blueAccent),
+                onPressed: _send),
+          ]),
+        ),
+      ]),
     );
   }
 
-  Widget _messageBubble(Map<String, dynamic> msg, bool isMe) {
+  Widget _bubble(Map<String, dynamic> m, bool isMe) {
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isMe ? Colors.blue.shade100 : Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(12),
-        ),
         constraints: const BoxConstraints(maxWidth: 280),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (!isMe)
-              Text(
-                msg['sender_name'] ?? 'User',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-              ),
-            Text(msg['content'] ?? ''),
-            const SizedBox(height: 4),
-            Text(
-              DateTime.parse(msg['sent_at']).toLocal().toString().substring(11, 16),
-              style: const TextStyle(fontSize: 10, color: Colors.grey),
-            ),
-          ],
-        ),
+        decoration: BoxDecoration(
+            color: isMe ? Colors.blue.shade100 : Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(12)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (!isMe) Text(m['sender_name'] ?? 'User',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+          Text(m['content'] ?? ''),
+          const SizedBox(height: 4),
+          Text(DateTime.parse(m['sent_at']).toLocal().toString().substring(11, 16),
+              style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        ]),
       ),
     );
   }

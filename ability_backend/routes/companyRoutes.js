@@ -1,9 +1,6 @@
 // routes/companyRoutes.js
 const express = require('express');
 const router = express.Router();
-const companyController = require('../controllers/companyController');
-
-// GET /api/companies/:companyId/admin
-router.get('/:companyId/admin', companyController.getCompanyAdmin);
-
+const company = require('../controllers/companyController');
+router.get('/:companyId/admin', company.getCompanyAdmin);
 module.exports = router;

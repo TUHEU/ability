@@ -1,58 +1,47 @@
 // lib/models/application.dart
-import 'dart:convert';
-
 class Application {
-  final int applicationId;
-  final int jobId;
-  final int seekerId;
-  final String seekerName;
-  final String jobTitle;
-  final String companyName;
-  final String? coverLetter;
-  final String status;
+  final int      applicationId;
+  final int      jobId;
+  final int      seekerId;
+  final String   seekerName;
+  final String   jobTitle;
+  final String   companyName;
+  final String?  coverLetter;
+  final String   status;
   final DateTime appliedAt;
-  final String? seekerBio;
+  final String?  seekerBio;
 
-  Application({
-    required this.applicationId,
-    required this.jobId,
-    required this.seekerId,
-    required this.seekerName,
-    required this.jobTitle,
-    required this.companyName,
-    this.coverLetter,
-    required this.status,
-    required this.appliedAt,
-    this.seekerBio,
+  const Application({
+    required this.applicationId, required this.jobId, required this.seekerId,
+    required this.seekerName,    required this.jobTitle, required this.companyName,
+    this.coverLetter, required this.status, required this.appliedAt, this.seekerBio,
   });
 
-  factory Application.fromJson(Map<String, dynamic> json) {
-    return Application(
-      applicationId: json['application_id'],
-      jobId: json['job_id'],
-      seekerId: json['seeker_id'] ?? json['seeker_user_id'],
-      seekerName: json['seeker_name'] ?? 'Anonymous Candidate',
-      jobTitle: json['job_title'],
-      companyName: json['company_name'] ?? 'Unknown Company',
-      coverLetter: json['cover_letter'],
-      status: json['status'],
-      appliedAt: DateTime.parse(json['applied_at']),
-      seekerBio: json['bio'],
-    );
-  }
+  factory Application.fromJson(Map<String, dynamic> json) => Application(
+    applicationId: json['application_id'] as int,
+    jobId:         json['job_id'] as int,
+    seekerId:      json['seeker_id'] as int? ?? json['seeker_user_id'] as int,
+    seekerName:    json['seeker_name'] as String? ?? 'Anonymous',
+    jobTitle:      json['job_title'] as String,
+    companyName:   json['company_name'] as String? ?? 'Unknown',
+    coverLetter:   json['cover_letter'] as String?,
+    status:        json['status'] as String,
+    appliedAt:     DateTime.parse(json['applied_at'] as String),
+    seekerBio:     json['bio'] as String?,
+  );
+}
 
-  Map<String, dynamic> toJson() {
-    return {
-      'application_id': applicationId,
-      'job_id': jobId,
-      'seeker_id': seekerId,
-      'seeker_name': seekerName,
-      'job_title': jobTitle,
-      'company_name': companyName,
-      'cover_letter': coverLetter,
-      'status': status,
-      'applied_at': appliedAt.toIso8601String(),
-      'bio': seekerBio,
-    };
-  }
+// lib/models/seeker_profile.dart
+class SeekerProfile {
+  final String name;
+  final bool   anonymousMode;
+  final Map<String, bool> settings;
+
+  const SeekerProfile({required this.name, this.anonymousMode = true, required this.settings});
+
+  factory SeekerProfile.fromJson(Map<String, dynamic> json) => SeekerProfile(
+    name:          json['name'] as String? ?? 'Anonymous',
+    anonymousMode: json['anonymous_mode'] == 1 || json['anonymous_mode'] == true,
+    settings:      json['settings'] != null ? Map<String, bool>.from(json['settings'] as Map) : {},
+  );
 }

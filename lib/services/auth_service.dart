@@ -1,66 +1,30 @@
-import 'dart:async';
+// lib/services/auth_service.dart
+// DESIGN PATTERN: Singleton + Service Layer (sits between UI and Repository)
 import 'package:shared_preferences/shared_preferences.dart';
-import 'api_service.dart';
+import '../repositories/auth_repository.dart';
 
 class AuthService {
-  // 1. Create a private constructor to prevent external classes from using 'new AuthService()'
-  AuthService._internal();
+  static final AuthService _i = AuthService._();
+  AuthService._();
+  factory AuthService() => _i;
 
-  // 2. Create the single, private static instance of the class
-  static final AuthService _instance = AuthService._internal();
+  Future<bool> register(String email, String password, String role, {String? companyName}) =>
+      AuthRepository().register(email, password, role, companyName: companyName);
 
-  // 3. Create a factory constructor that always returns the exact same internal instance
-  factory AuthService() {
-    return _instance;
-  }
-
-  // --- REGISTER ---
-  Future<bool> register(
-    String email,
-    String password,
-    String role, {
-    String? companyName,
-  }) async {
-    try {
-      final response = await ApiService.registerUser(
-        email,
-        password,
-        role,
-        companyName: companyName,
-      );
-
-      return response;
-    } catch (e) {
-      print("Registration error: $e");
-      return false;
-    }
-  }
-
-  // --- LOGIN ---
   Future<bool> login(String email, String password) async {
-    try {
-      final data = await ApiService.loginUser(email, password);
-
-      if (data != null) {
-        // Save the token and user data directly to the device's storage
-        SharedPreferences prefs = await SharedPreferences.getInstance();
-        await prefs.setString('token', data['token']);
-        await prefs.setInt('userId', data['user']['id']);
-        await prefs.setString('role', data['user']['role']);
-
-        // 🚀 SAVE THE COMPANY ID IF THIS USER IS AN EMPLOYER
-        if (data['user']['companyId'] != null) {
-          await prefs.setInt('companyId', data['user']['companyId']);
-        }
-
-        return true;
-      }
-
-      print("Login failed: No data returned");
-      return false;
-    } catch (e) {
-      print("Login error: $e");
-      return false;
-    }
+    final data = await AuthRepository().login(email, password);
+    if (data == null) return false;
+    final prefs = await SharedPreferences.getInstance();
+    final user  = data['user'] as Map<String, dynamic>;
+    await prefs.setString('token',     data['token'] as String? ?? '');
+    await prefs.setInt   ('userId',    user['id'] as int);
+    await prefs.setString('role',      user['role'] as String);
+    await prefs.setString('userEmail', user['email'] as String);
+    await prefs.setString('userName',  user['name'] as String? ?? 'User');
+    if (user['companyId'] != null) await prefs.setInt('companyId', user['companyId'] as int);
+    if (user['role'] == 'employer')   await prefs.setInt('employerId', user['id'] as int);
+    return true;
   }
+
+  Future<void> logout() async => (await SharedPreferences.getInstance()).clear();
 }

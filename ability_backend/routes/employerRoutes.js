@@ -1,12 +1,7 @@
 // routes/employerRoutes.js
 const express = require('express');
 const router = express.Router();
-const employerController = require('../controllers/employerController');
-
-// Route for dashboard card stats counters
-router.get('/dashboard/:employerId', employerController.getEmployerDashboardStats);
-
-// Route to populate "Your Active Listings" widget list
-router.get('/jobs/:employerId', employerController.getEmployerActiveJobs);
-
+const employer = require('../controllers/employerController');
+router.get('/dashboard/:employerId', employer.getEmployerDashboardStats);
+router.get('/jobs/:employerId', employer.getEmployerActiveJobs);
 module.exports = router;

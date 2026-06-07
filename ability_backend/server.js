@@ -1,38 +1,23 @@
+// server.js
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
-const db = require('./config/db');
-const jobRoutes = require('./routes/jobRoutes');
-const applicationRoutes = require('./routes/applicationRoutes');
-const messageRoutes = require('./routes/messageRoutes');
-const companyRoutes = require('./routes/companyRoutes');
-const employerRoutes = require('./routes/employerRoutes');
-const communityRoutes = require('./routes/communityRoutes');
-const app = express();
+require('./config/db'); // initialise pool + connection check
 
-// Middleware
+const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Import Routes
-const authRoutes = require('./routes/authRoutes');
+// Routes
+app.use('/api/auth',         require('./routes/authRoutes'));
+app.use('/api/jobs',         require('./routes/jobRoutes'));
+app.use('/api/applications', require('./routes/applicationRoutes'));
+app.use('/api/messages',     require('./routes/messageRoutes'));
+app.use('/api/companies',    require('./routes/companyRoutes'));
+app.use('/api/employers',    require('./routes/employerRoutes'));
+app.use('/api/community',    require('./routes/communityRoutes'));
 
-// Use Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/jobs', jobRoutes);
-app.use('/api/applications', applicationRoutes);
-app.use('/api/messages', messageRoutes);
-app.use('/api/companies', companyRoutes);
-app.use('/api/employers', employerRoutes);
-app.use('/api/community', communityRoutes);
+app.get('/', (_, res) => res.send('AbilityBridge API is running...'));
 
-// Health check
-app.get('/', (req, res) => {
-    res.send('AbilityBridge API is running...');
-});
-
-// Start Server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server running on port ${PORT} (Accepting outside connections)`);
-});
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server on port ${PORT}`));
